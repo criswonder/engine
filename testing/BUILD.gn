@@ -6,8 +6,11 @@ source_set("testing_lib") {
   testonly = true
 
   sources = [
+    "$flutter_root/testing/assertions.h",
     "$flutter_root/testing/testing.cc",
     "$flutter_root/testing/testing.h",
+    "$flutter_root/testing/thread_test.cc",
+    "$flutter_root/testing/thread_test.h",
   ]
 
   public_deps = [
@@ -22,8 +25,6 @@ source_set("testing") {
 
   sources = [
     "$flutter_root/testing/run_all_unittests.cc",
-    "$flutter_root/testing/thread_test.cc",
-    "$flutter_root/testing/thread_test.h",
   ]
 
   public_deps = [
@@ -46,6 +47,19 @@ source_set("dart") {
   ]
 }
 
+source_set("skia") {
+  testonly = true
+
+  sources = [
+    "$flutter_root/testing/assertions_skia.h",
+  ]
+
+  public_deps = [
+    ":testing_lib",
+    "//third_party/skia",
+  ]
+}
+
 if (current_toolchain == host_toolchain) {
   source_set("opengl") {
     testonly = true
@@ -58,12 +72,9 @@ if (current_toolchain == host_toolchain) {
     ]
 
     deps = [
-      "//$flutter_root/fml",
+      ":skia",
+      "$flutter_root/fml",
       "//third_party/swiftshader_flutter:swiftshader",
-    ]
-
-    public_deps = [
-      "//third_party/skia",
     ]
   }
 }
