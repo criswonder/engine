@@ -9,7 +9,8 @@
     ],
     "services": [
       "fuchsia.accessibility.semantics.SemanticsManager",
-      "fuchsia.sys.Launcher"
+      "fuchsia.intl.PropertyProvider",
+      "fuchsia.process.Launcher"
     ]
   }
 }

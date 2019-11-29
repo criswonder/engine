@@ -93,12 +93,27 @@ abstract class ContainerLayer extends Layer {
   }
 }
 
+class BackdropFilterLayer extends ContainerLayer {
+  final ui.ImageFilter _filter;
+
+  BackdropFilterLayer(this._filter);
+
+  @override
+  void paint(PaintContext context) {
+    context.canvas.saveLayerWithFilter(paintBounds, _filter);
+    paintChildren(context);
+    context.canvas.restore();
+  }
+}
+
 /// A layer that clips its child layers by a given [Path].
 class ClipPathLayer extends ContainerLayer {
   /// The path used to clip child layers.
   final ui.Path _clipPath;
+  final ui.Clip _clipBehavior;
 
-  ClipPathLayer(this._clipPath);
+  ClipPathLayer(this._clipPath, this._clipBehavior)
+      : assert(_clipBehavior != ui.Clip.none);
 
   @override
   void preroll(PrerollContext prerollContext, Matrix4 matrix) {
@@ -114,8 +129,15 @@ class ClipPathLayer extends ContainerLayer {
     assert(needsPainting);
 
     paintContext.canvas.save();
-    paintContext.canvas.clipPath(_clipPath);
+    paintContext.canvas.clipPath(_clipPath, _clipBehavior != ui.Clip.hardEdge);
+
+    if (_clipBehavior == ui.Clip.antiAliasWithSaveLayer) {
+      paintContext.canvas.saveLayer(paintBounds, null);
+    }
     paintChildren(paintContext);
+    if (_clipBehavior == ui.Clip.antiAliasWithSaveLayer) {
+      paintContext.canvas.restore();
+    }
     paintContext.canvas.restore();
   }
 }
@@ -124,8 +146,10 @@ class ClipPathLayer extends ContainerLayer {
 class ClipRectLayer extends ContainerLayer {
   /// The rectangle used to clip child layers.
   final ui.Rect _clipRect;
+  final ui.Clip _clipBehavior;
 
-  ClipRectLayer(this._clipRect);
+  ClipRectLayer(this._clipRect, this._clipBehavior)
+      : assert(_clipBehavior != ui.Clip.none);
 
   @override
   void preroll(PrerollContext prerollContext, Matrix4 matrix) {
@@ -140,8 +164,18 @@ class ClipRectLayer extends ContainerLayer {
     assert(needsPainting);
 
     paintContext.canvas.save();
-    paintContext.canvas.clipRect(_clipRect);
+    paintContext.canvas.clipRect(
+      _clipRect,
+      ui.ClipOp.intersect,
+      _clipBehavior != ui.Clip.hardEdge,
+    );
+    if (_clipBehavior == ui.Clip.antiAliasWithSaveLayer) {
+      paintContext.canvas.saveLayer(_clipRect, null);
+    }
     paintChildren(paintContext);
+    if (_clipBehavior == ui.Clip.antiAliasWithSaveLayer) {
+      paintContext.canvas.restore();
+    }
     paintContext.canvas.restore();
   }
 }
@@ -150,8 +184,10 @@ class ClipRectLayer extends ContainerLayer {
 class ClipRRectLayer extends ContainerLayer {
   /// The rounded rectangle used to clip child layers.
   final ui.RRect _clipRRect;
+  final ui.Clip _clipBehavior;
 
-  ClipRRectLayer(this._clipRRect);
+  ClipRRectLayer(this._clipRRect, this._clipBehavior)
+      : assert(_clipBehavior != ui.Clip.none);
 
   @override
   void preroll(PrerollContext prerollContext, Matrix4 matrix) {
@@ -166,8 +202,15 @@ class ClipRRectLayer extends ContainerLayer {
     assert(needsPainting);
 
     paintContext.canvas.save();
-    paintContext.canvas.clipRRect(_clipRRect);
+    paintContext.canvas
+        .clipRRect(_clipRRect, _clipBehavior != ui.Clip.hardEdge);
+    if (_clipBehavior == ui.Clip.antiAliasWithSaveLayer) {
+      paintContext.canvas.saveLayer(paintBounds, null);
+    }
     paintChildren(paintContext);
+    if (_clipBehavior == ui.Clip.antiAliasWithSaveLayer) {
+      paintContext.canvas.restore();
+    }
     paintContext.canvas.restore();
   }
 }
@@ -274,7 +317,7 @@ class TransformLayer extends ContainerLayer
 /// A layer containing a [Picture].
 class PictureLayer extends Layer {
   /// The picture to paint into the canvas.
-  final ui.Picture picture;
+  final SkPicture picture;
 
   /// The offset at which to paint the picture.
   final ui.Offset offset;
@@ -328,8 +371,60 @@ class PhysicalShapeLayer extends ContainerLayer
   @override
   void preroll(PrerollContext prerollContext, Matrix4 matrix) {
     prerollChildren(prerollContext, matrix);
-    paintBounds =
-        ElevationShadow.computeShadowRect(_path.getBounds(), _elevation);
+
+    paintBounds = _path.getBounds();
+    if (_elevation == 0.0) {
+      // No need to extend the paint bounds if there is no shadow.
+      return;
+    } else {
+      // Add some margin to the paint bounds to leave space for the shadow.
+      // We fill this whole region and clip children to it so we don't need to
+      // join the child paint bounds.
+      // The offset is calculated as follows:
+
+      //                   .---                           (kLightRadius)
+      //                -------/                          (light)
+      //                   |  /
+      //                   | /
+      //                   |/
+      //                   |O
+      //                  /|                              (kLightHeight)
+      //                 / |
+      //                /  |
+      //               /   |
+      //              /    |
+      //             -------------                        (layer)
+      //            /|     |
+      //           / |     |                              (elevation)
+      //        A /  |     |B
+      // ------------------------------------------------ (canvas)
+      //          ---                                     (extent of shadow)
+      //
+      // E = lt        }           t = (r + w/2)/h
+      //                } =>
+      // r + w/2 = ht  }           E = (l/h)(r + w/2)
+      //
+      // Where: E = extent of shadow
+      //        l = elevation of layer
+      //        r = radius of the light source
+      //        w = width of the layer
+      //        h = light height
+      //        t = tangent of AOB, i.e., multiplier for elevation to extent
+      final double devicePixelRatio = ui.window.devicePixelRatio;
+
+      final double radius = kLightRadius * devicePixelRatio;
+      // tangent for x
+      double tx = (radius + paintBounds.width * 0.5) / kLightHeight;
+      // tangent for y
+      double ty = (radius + paintBounds.height * 0.5) / kLightHeight;
+
+      paintBounds = ui.Rect.fromLTRB(
+        paintBounds.left - tx,
+        paintBounds.top - ty,
+        paintBounds.right + tx,
+        paintBounds.bottom + ty,
+      );
+    }
   }
 
   @override
@@ -349,13 +444,13 @@ class PhysicalShapeLayer extends ContainerLayer
     final int saveCount = paintContext.canvas.save();
     switch (_clipBehavior) {
       case ui.Clip.hardEdge:
-        paintContext.canvas.clipPath(_path, doAntiAlias: false);
+        paintContext.canvas.clipPath(_path, false);
         break;
       case ui.Clip.antiAlias:
-        paintContext.canvas.clipPath(_path, doAntiAlias: true);
+        paintContext.canvas.clipPath(_path, true);
         break;
       case ui.Clip.antiAliasWithSaveLayer:
-        paintContext.canvas.clipPath(_path, doAntiAlias: true);
+        paintContext.canvas.clipPath(_path, true);
         paintContext.canvas.saveLayer(paintBounds, null);
         break;
       case ui.Clip.none:

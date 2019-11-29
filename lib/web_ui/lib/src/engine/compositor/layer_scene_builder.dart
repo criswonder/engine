@@ -92,27 +92,28 @@ class LayerSceneBuilder implements ui.SceneBuilder {
   @override
   ui.BackdropFilterEngineLayer pushBackdropFilter(ui.ImageFilter filter,
       {ui.EngineLayer oldLayer}) {
-    throw UnimplementedError();
+    pushLayer(BackdropFilterLayer(filter));
+    return null;
   }
 
   @override
   ui.ClipPathEngineLayer pushClipPath(ui.Path path,
       {ui.Clip clipBehavior = ui.Clip.antiAlias, ui.EngineLayer oldLayer}) {
-    pushLayer(ClipPathLayer(path));
+    pushLayer(ClipPathLayer(path, clipBehavior));
     return null;
   }
 
   @override
   ui.ClipRRectEngineLayer pushClipRRect(ui.RRect rrect,
       {ui.Clip clipBehavior, ui.EngineLayer oldLayer}) {
-    pushLayer(ClipRRectLayer(rrect));
+    pushLayer(ClipRRectLayer(rrect, clipBehavior));
     return null;
   }
 
   @override
   ui.ClipRectEngineLayer pushClipRect(ui.Rect rect,
       {ui.Clip clipBehavior = ui.Clip.antiAlias, ui.EngineLayer oldLayer}) {
-    pushLayer(ClipRectLayer(rect));
+    pushLayer(ClipRectLayer(rect, clipBehavior));
     return null;
   }
 

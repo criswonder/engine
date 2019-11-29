@@ -19,6 +19,7 @@
 
 namespace flutter {
 
+// TODO(chinmaygarde): Make these enum names match the style guide.
 enum MutatorType { clip_rect, clip_rrect, clip_path, transform, opacity };
 
 // Stores mutation information like clipping or transform.
@@ -198,11 +199,11 @@ class ExternalViewEmbedder {
 
   virtual ~ExternalViewEmbedder() = default;
 
-  // Usually, the root surface is not owned by the view embedder. However, if
-  // the view embedder wants to provide a surface to the rasterizer, it may
-  // return one here. This surface takes priority over the surface materialized
+  // Usually, the root canvas is not owned by the view embedder. However, if
+  // the view embedder wants to provide a canvas to the rasterizer, it may
+  // return one here. This canvas takes priority over the canvas materialized
   // from the on-screen render target.
-  virtual sk_sp<SkSurface> GetRootSurface() = 0;
+  virtual SkCanvas* GetRootCanvas() = 0;
 
   // Call this in-lieu of |SubmitFrame| to clear pre-roll state and
   // sets the stage for the next pre-roll.

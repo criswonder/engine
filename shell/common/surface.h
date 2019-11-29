@@ -21,7 +21,7 @@ class SurfaceFrame {
   using SubmitCallback =
       std::function<bool(const SurfaceFrame& surface_frame, SkCanvas* canvas)>;
 
-  SurfaceFrame(sk_sp<SkSurface> surface, SubmitCallback submit_callback);
+  SurfaceFrame(sk_sp<SkSurface> surface, const SubmitCallback& submit_callback);
 
   ~SurfaceFrame();
 
@@ -50,7 +50,9 @@ class Surface {
 
   virtual bool IsValid() = 0;
 
-  virtual std::unique_ptr<SurfaceFrame> AcquireFrame(const SkISize& size) = 0;
+  virtual std::unique_ptr<SurfaceFrame> AcquireFrame(
+      const SkISize& size,
+      const bool needs_readback) = 0;
 
   virtual SkMatrix GetRootTransformation() const = 0;
 

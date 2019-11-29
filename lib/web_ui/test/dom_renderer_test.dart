@@ -98,6 +98,14 @@ void main() {
     renderer.attachBeforeElement(parent, childD, childC);
     expect(parent.innerHtml, '<a></a><b></b><c></c><d></d>');
   });
+
+  test('inneheight/innerWidth are equal to visualViewport height and width', () {
+    if (html.window.visualViewport != null) {
+      expect(html.window.visualViewport.width, html.window.innerWidth);
+      expect(html.window.visualViewport.height, html.window.innerHeight);
+    }
+  });
+
   test('replaces viewport meta tags during style reset', () {
     final html.MetaElement existingMeta = html.MetaElement()
       ..name = 'viewport'
@@ -107,5 +115,12 @@ void main() {
 
     final DomRenderer renderer = DomRenderer();
     renderer.reset();
+  });
+
+  test('accesibility placeholder is attached after creation', () {
+    DomRenderer();
+
+    expect(html.document.getElementsByTagName('flt-semantics-placeholder'),
+          isNotEmpty);
   });
 }

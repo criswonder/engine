@@ -19,19 +19,21 @@ RuntimeController::RuntimeController(
     DartVM* p_vm,
     fml::RefPtr<const DartSnapshot> p_isolate_snapshot,
     TaskRunners p_task_runners,
+    fml::WeakPtr<SnapshotDelegate> p_snapshot_delegate,
     fml::WeakPtr<IOManager> p_io_manager,
     fml::RefPtr<SkiaUnrefQueue> p_unref_queue,
     fml::WeakPtr<ImageDecoder> p_image_decoder,
     std::string p_advisory_script_uri,
     std::string p_advisory_script_entrypoint,
-    std::function<void(int64_t)> p_idle_notification_callback,
-    fml::closure p_isolate_create_callback,
-    fml::closure p_isolate_shutdown_callback,
+    const std::function<void(int64_t)>& p_idle_notification_callback,
+    const fml::closure& p_isolate_create_callback,
+    const fml::closure& p_isolate_shutdown_callback,
     std::shared_ptr<const fml::Mapping> p_persistent_isolate_data)
     : RuntimeController(p_client,
                         p_vm,
                         std::move(p_isolate_snapshot),
                         std::move(p_task_runners),
+                        std::move(p_snapshot_delegate),
                         std::move(p_io_manager),
                         std::move(p_unref_queue),
                         std::move(p_image_decoder),
@@ -48,20 +50,22 @@ RuntimeController::RuntimeController(
     DartVM* p_vm,
     fml::RefPtr<const DartSnapshot> p_isolate_snapshot,
     TaskRunners p_task_runners,
+    fml::WeakPtr<SnapshotDelegate> p_snapshot_delegate,
     fml::WeakPtr<IOManager> p_io_manager,
     fml::RefPtr<SkiaUnrefQueue> p_unref_queue,
     fml::WeakPtr<ImageDecoder> p_image_decoder,
     std::string p_advisory_script_uri,
     std::string p_advisory_script_entrypoint,
-    std::function<void(int64_t)> idle_notification_callback,
+    const std::function<void(int64_t)>& idle_notification_callback,
     WindowData p_window_data,
-    fml::closure p_isolate_create_callback,
-    fml::closure p_isolate_shutdown_callback,
+    const fml::closure& p_isolate_create_callback,
+    const fml::closure& p_isolate_shutdown_callback,
     std::shared_ptr<const fml::Mapping> p_persistent_isolate_data)
     : client_(p_client),
       vm_(p_vm),
       isolate_snapshot_(std::move(p_isolate_snapshot)),
       task_runners_(p_task_runners),
+      snapshot_delegate_(p_snapshot_delegate),
       io_manager_(p_io_manager),
       unref_queue_(p_unref_queue),
       image_decoder_(p_image_decoder),
@@ -80,6 +84,7 @@ RuntimeController::RuntimeController(
                                      isolate_snapshot_,                //
                                      task_runners_,                    //
                                      std::make_unique<Window>(this),   //
+                                     snapshot_delegate_,               //
                                      io_manager_,                      //
                                      unref_queue_,                     //
                                      image_decoder_,                   //
@@ -140,6 +145,7 @@ std::unique_ptr<RuntimeController> RuntimeController::Clone() const {
       vm_,                          //
       isolate_snapshot_,            //
       task_runners_,                //
+      snapshot_delegate_,           //
       io_manager_,                  //
       unref_queue_,                 //
       image_decoder_,               //

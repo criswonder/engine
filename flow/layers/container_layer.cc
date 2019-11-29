@@ -6,13 +6,46 @@
 
 namespace flutter {
 
-ContainerLayer::ContainerLayer() {}
+ContainerLayer::ContainerLayer()
+    : child_needs_screen_readback_(false), renders_to_save_layer_(false) {}
 
 ContainerLayer::~ContainerLayer() = default;
 
 void ContainerLayer::Add(std::shared_ptr<Layer> layer) {
-  layer->set_parent(this);
+  Layer* the_layer = layer.get();
+  the_layer->set_parent(this);
   layers_.push_back(std::move(layer));
+  if (the_layer->tree_reads_surface()) {
+    NotifyChildReadback(the_layer);
+  }
+}
+
+void ContainerLayer::ClearChildren() {
+  layers_.clear();
+  if (child_needs_screen_readback_) {
+    child_needs_screen_readback_ = false;
+    UpdateTreeReadsSurface();
+  }
+}
+
+void ContainerLayer::set_renders_to_save_layer(bool value) {
+  if (renders_to_save_layer_ != value) {
+    renders_to_save_layer_ = value;
+    UpdateTreeReadsSurface();
+  }
+}
+
+void ContainerLayer::NotifyChildReadback(const Layer* layer) {
+  if (child_needs_screen_readback_ || !layer->tree_reads_surface()) {
+    return;
+  }
+  child_needs_screen_readback_ = true;
+  UpdateTreeReadsSurface();
+}
+
+bool ContainerLayer::ComputeTreeReadsSurface() const {
+  return layer_reads_surface() ||
+         (!renders_to_save_layer_ && child_needs_screen_readback_);
 }
 
 void ContainerLayer::Preroll(PrerollContext* context, const SkMatrix& matrix) {
@@ -26,14 +59,28 @@ void ContainerLayer::Preroll(PrerollContext* context, const SkMatrix& matrix) {
 void ContainerLayer::PrerollChildren(PrerollContext* context,
                                      const SkMatrix& child_matrix,
                                      SkRect* child_paint_bounds) {
+  // Platform views have no children, so context->has_platform_view should
+  // always be false.
+  FML_DCHECK(!context->has_platform_view);
+  bool child_has_platform_view = false;
   for (auto& layer : layers_) {
+    // Reset context->has_platform_view to false so that layers aren't treated
+    // as if they have a platform view based on one being previously found in a
+    // sibling tree.
+    context->has_platform_view = false;
+
     layer->Preroll(context, child_matrix);
 
     if (layer->needs_system_composite()) {
       set_needs_system_composite(true);
     }
     child_paint_bounds->join(layer->paint_bounds());
+
+    child_has_platform_view =
+        child_has_platform_view || context->has_platform_view;
   }
+
+  context->has_platform_view = child_has_platform_view;
 }
 
 void ContainerLayer::PaintChildren(PaintContext& context) const {
