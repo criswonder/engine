@@ -210,9 +210,25 @@ class TextDimensions {
   }
 
   /// Updated element style width.
-  void updateWidth(String cssWidth) {
+  void updateConstraintWidth(double width, String ellipsis) {
     _invalidateBoundsCache();
-    _element.style.width = cssWidth;
+
+    if (width.isInfinite) {
+      _element.style
+        ..width = null
+        ..whiteSpace = 'pre';
+    } else if (ellipsis != null) {
+      // Width is finite, but we don't want to let the text soft-wrap when
+      // ellipsis overflow is enabled.
+      _element.style
+        ..width = '${width}px'
+        ..whiteSpace = 'pre';
+    } else {
+      // Width is finite and there's no ellipsis overflow.
+      _element.style
+        ..width = '${width}px'
+        ..whiteSpace = 'pre-wrap';
+    }
   }
 
   void _invalidateBoundsCache() {
@@ -475,17 +491,8 @@ class ParagraphRuler {
       ..display = 'block'
       ..overflowWrap = 'break-word';
 
-    // TODO(flutter_web): Implement the ellipsis overflow for multi-line text
-    // too. As a pre-requisite, we need to be able to programmatically find
-    // line breaks.
-    if (style.ellipsis == null) {
-      elementStyle.whiteSpace = 'pre-wrap';
-    } else {
-      // The height measurement is affected by whether the text has the ellipsis
-      // overflow property or not. This is because when ellipsis is set, we may
-      // not render all the lines, but stop at the first line that overflows.
+    if (style.ellipsis != null) {
       elementStyle
-        ..whiteSpace = 'pre'
         ..overflow = 'hidden'
         ..textOverflow = 'ellipsis';
     }
@@ -595,7 +602,10 @@ class ParagraphRuler {
     // The extra 0.5 is because sometimes the browser needs slightly more space
     // than the size it reports back. When that happens the text may be wrap
     // when we thought it didn't.
-    constrainedDimensions.updateWidth('${constraints.width + 0.5}px');
+    constrainedDimensions.updateConstraintWidth(
+      constraints.width + 0.5,
+      style.ellipsis,
+    );
   }
 
   /// Returns text position in a paragraph that contains multiple
@@ -619,30 +629,45 @@ class ParagraphRuler {
       final double dx = offset.dx;
       final double dy = offset.dy;
       if (dx >= bounds.left &&
-          dy < bounds.right &&
+          dx < bounds.right &&
           dy >= bounds.top &&
           dy < bounds.bottom) {
         // We found the element bounds that contains offset.
         // Calculate text position for this node.
-        int textPosition = 0;
-        for (int nodeIndex = 0; nodeIndex < i; nodeIndex++) {
-          textPosition += textNodes[nodeIndex].text.length;
-        }
-        return textPosition;
+        return _countTextPosition(el.childNodes, textNodes[i]);
       }
     }
     return 0;
   }
 
   void _collectTextNodes(Iterable<html.Node> nodes, List<html.Node> textNodes) {
+    if (nodes.isEmpty) {
+      return;
+    }
+    final List<html.Node> childNodes = [];
     for (html.Node node in nodes) {
       if (node.nodeType == html.Node.TEXT_NODE) {
         textNodes.add(node);
       }
-      if (node.hasChildNodes()) {
-        _collectTextNodes(node.childNodes, textNodes);
+      childNodes.addAll(node.childNodes);
+    }
+    _collectTextNodes(childNodes, textNodes);
+  }
+
+  int _countTextPosition(List<html.Node> nodes, html.Node endNode) {
+    int position = 0;
+    final List<html.Node> stack = nodes.reversed.toList();
+    while (true) {
+      var node = stack.removeLast();
+      stack.addAll(node.childNodes.reversed);
+      if (node == endNode) {
+        break;
+      }
+      if (node.nodeType == html.Node.TEXT_NODE) {
+        position += node.text.length;
       }
     }
+    return position;
   }
 
   /// Performs clean-up after a measurement is done, preparing this ruler for
@@ -701,7 +726,7 @@ class ParagraphRuler {
       ..appendText(before)
       ..append(rangeSpan)
       ..appendText(after);
-    constrainedDimensions.updateWidth('${constraints.width}px');
+    constrainedDimensions.updateConstraintWidth(constraints.width, null);
 
     // Measure the rects of [rangeSpan].
     final List<html.Rectangle<num>> clientRects = rangeSpan.getClientRects();
@@ -790,7 +815,9 @@ class ParagraphRuler {
     final int len = constraintCache.length;
     for (int i = 0; i < len; i++) {
       final MeasurementResult item = constraintCache[i];
-      if (item.constraintWidth == constraints.width) {
+      if (item.constraintWidth == constraints.width &&
+          item.textAlign == paragraph._textAlign &&
+          item.textDirection == paragraph._textDirection) {
         return item;
       }
     }
@@ -842,7 +869,13 @@ class MeasurementResult {
   /// of each laid out line.
   final List<EngineLineMetrics> lines;
 
-  const MeasurementResult(
+  /// The text align value of the paragraph.
+  final ui.TextAlign textAlign;
+
+  /// The text direction of the paragraph.
+  final ui.TextDirection textDirection;
+
+  MeasurementResult(
     this.constraintWidth, {
     @required this.isSingleLine,
     @required this.width,
@@ -854,6 +887,8 @@ class MeasurementResult {
     @required this.alphabeticBaseline,
     @required this.ideographicBaseline,
     @required this.lines,
+    @required textAlign,
+    @required textDirection,
   })  : assert(constraintWidth != null),
         assert(isSingleLine != null),
         assert(width != null),
@@ -862,5 +897,7 @@ class MeasurementResult {
         assert(minIntrinsicWidth != null),
         assert(maxIntrinsicWidth != null),
         assert(alphabeticBaseline != null),
-        assert(ideographicBaseline != null);
+        assert(ideographicBaseline != null),
+        this.textAlign = textAlign ?? ui.TextAlign.start,
+        this.textDirection = textDirection ?? ui.TextDirection.ltr;
 }

@@ -154,16 +154,18 @@ class BrowserPlatform extends PlatformPlugin {
     final Map<String, dynamic> requestData = json.decode(payload);
     final String filename = requestData['filename'];
     final bool write = requestData['write'];
-    final double maxDiffRate = requestData['maxdiffrate'];
+    final double maxDiffRate = requestData.containsKey('maxdiffrate')
+      ? requestData['maxdiffrate'].toDouble()  // can be parsed as either int or double
+      : kMaxDiffRateFailure;
     final Map<String, dynamic> region = requestData['region'];
-    final String result = await _diffScreenshot(
-        filename, write, maxDiffRate ?? kMaxDiffRateFailure, region);
+    final PixelComparison pixelComparison = PixelComparison.values.firstWhere((value) => value.toString() == requestData['pixelComparison']);
+    final String result = await _diffScreenshot(filename, write, maxDiffRate, region, pixelComparison);
     return shelf.Response.ok(json.encode(result));
   }
 
   Future<String> _diffScreenshot(
       String filename, bool write, double maxDiffRateFailure,
-      [Map<String, dynamic> region]) async {
+      Map<String, dynamic> region, PixelComparison pixelComparison) async {
     if (doUpdateScreenshotGoldens) {
       write = true;
     }
@@ -246,8 +248,10 @@ To automatically create this file call matchGoldenFile('$filename', write: true)
     }
 
     ImageDiff diff = ImageDiff(
-        golden: decodeNamedImage(file.readAsBytesSync(), filename),
-        other: screenshot);
+      golden: decodeNamedImage(file.readAsBytesSync(), filename),
+      other: screenshot,
+      pixelComparison: pixelComparison,
+    );
 
     if (diff.rate > 0) {
       // Images are different, so produce some debug info
@@ -770,7 +774,7 @@ class BrowserManager {
         final String mapPath = p.join(
           env.environment.webUiRootDir.path,
           'build',
-          '$path.js.map',
+          '$path.browser_test.dart.js.map',
         );
         final JSStackTraceMapper mapper = JSStackTraceMapper(
           await File(mapPath).readAsString(),

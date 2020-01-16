@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//third_party/dart/runtime/bin/vmservice/vmservice_sources.gni")
 import("$flutter_root/common/config.gni")
 import("$flutter_root/testing/testing.gni")
 
@@ -42,6 +41,8 @@ source_set("runtime") {
   sources = [
     "dart_isolate.cc",
     "dart_isolate.h",
+    "dart_isolate_group_data.cc",
+    "dart_isolate_group_data.h",
     "dart_service_isolate.cc",
     "dart_service_isolate.h",
     "dart_snapshot.cc",
@@ -66,6 +67,8 @@ source_set("runtime") {
     "skia_concurrent_executor.h",
     "start_up.cc",
     "start_up.h",
+    "window_data.cc",
+    "window_data.h",
   ]
 
   deps = [
