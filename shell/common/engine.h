@@ -161,7 +161,7 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
     //--------------------------------------------------------------------------
     /// @brief      When the Flutter application has a message to send to the
     ///             underlying platform, the message needs to be forwarded to
-    ///             the platform on the the appropriate thread (via the platform
+    ///             the platform on the appropriate thread (via the platform
     ///             task runner). The engine delegates this task to the shell
     ///             via this method.
     ///
@@ -210,7 +210,7 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
     ///             is not possible for the application to determine the total
     ///             time it took to render a specific frame. While the
     ///             layer-tree is constructed on the UI thread, it needs to be
-    ///             rendering on the GPU thread. Dart code cannot execute on
+    ///             rendering on the raster thread. Dart code cannot execute on
     ///             this thread. So any instrumentation about the frame times
     ///             gathered on this thread needs to be aggregated and sent back
     ///             to the UI thread for processing in Dart.
@@ -227,11 +227,44 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
     ///                              collected and send back to Dart.
     ///
     virtual void SetNeedsReportTimings(bool needs_reporting) = 0;
+
+    //--------------------------------------------------------------------------
+    /// @brief      Directly invokes platform-specific APIs to compute the
+    ///             locale the platform would have natively resolved to.
+    ///
+    /// @param[in]  supported_locale_data  The vector of strings that represents
+    ///                                    the locales supported by the app.
+    ///                                    Each locale consists of three
+    ///                                    strings: languageCode, countryCode,
+    ///                                    and scriptCode in that order.
+    ///
+    /// @return     A vector of 3 strings languageCode, countryCode, and
+    ///             scriptCode that represents the locale selected by the
+    ///             platform. Empty strings mean the value was unassigned. Empty
+    ///             vector represents a null locale.
+    ///
+    virtual std::unique_ptr<std::vector<std::string>>
+    ComputePlatformResolvedLocale(
+        const std::vector<std::string>& supported_locale_data) = 0;
   };
 
   //----------------------------------------------------------------------------
+  /// @brief      Creates an instance of the engine with a supplied
+  ///             `RuntimeController`.  Use the other constructor except for
+  ///             tests.
+  ///
+  Engine(Delegate& delegate,
+         const PointerDataDispatcherMaker& dispatcher_maker,
+         std::shared_ptr<fml::ConcurrentTaskRunner> image_decoder_task_runner,
+         TaskRunners task_runners,
+         Settings settings,
+         std::unique_ptr<Animator> animator,
+         fml::WeakPtr<IOManager> io_manager,
+         std::unique_ptr<RuntimeController> runtime_controller);
+
+  //----------------------------------------------------------------------------
   /// @brief      Creates an instance of the engine. This is done by the Shell
-  ///             on the the UI task runner.
+  ///             on the UI task runner.
   ///
   /// @param      delegate           The object used by the engine to perform
   ///                                tasks that require access to components
@@ -276,7 +309,7 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
          DartVM& vm,
          fml::RefPtr<const DartSnapshot> isolate_snapshot,
          TaskRunners task_runners,
-         const WindowData window_data,
+         const PlatformData platform_data,
          Settings settings,
          std::unique_ptr<Animator> animator,
          fml::WeakPtr<IOManager> io_manager,
@@ -342,8 +375,7 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   ///
   /// @return     The result of the call to run the root isolate.
   ///
-  FML_WARN_UNUSED_RESULT
-  RunStatus Run(RunConfiguration configuration);
+  [[nodiscard]] RunStatus Run(RunConfiguration configuration);
 
   //----------------------------------------------------------------------------
   /// @brief      Tears down an existing root isolate, reuses the components of
@@ -362,15 +394,19 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   /// @return     Whether the restart was successful. If not, the engine and its
   ///             shell must be discarded.
   ///
-  FML_WARN_UNUSED_RESULT
-  bool Restart(RunConfiguration configuration);
+  [[nodiscard]] bool Restart(RunConfiguration configuration);
+
+  //----------------------------------------------------------------------------
+  /// @brief      Setup default font manager according to specific platform.
+  ///
+  void SetupDefaultFontManager();
 
   //----------------------------------------------------------------------------
   /// @brief      Updates the asset manager referenced by the root isolate of a
   ///             Flutter application. This happens implicitly in the call to
   ///             `Engine::Run` and `Engine::Restart` as the asset manager is
   ///             referenced from the run configuration provided to those calls.
-  ///             In addition to the the `Engine::Run` and `Engine::Restart`
+  ///             In addition to the `Engine::Run` and `Engine::Restart`
   ///             calls, the tooling may need to update the assets available to
   ///             the application as the user adds them to their project. For
   ///             example, these assets may be referenced by code that is newly
@@ -399,7 +435,7 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   ///             one frame interval from this point, the Flutter application
   ///             will jank.
   ///
-  ///             If an root isolate is running, this method calls the
+  ///             If a root isolate is running, this method calls the
   ///             `::_beginFrame` method in `hooks.dart`. If a root isolate is
   ///             not running, this call does nothing.
   ///
@@ -414,7 +450,7 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   ///               by layer tree in the engine is 2. If both the UI and GPU
   ///               task runner tasks finish within one frame interval, the
   ///               pipeline depth is one. If the UI thread happens to be
-  ///               working on a frame when the GPU thread is still not done
+  ///               working on a frame when the raster thread is still not done
   ///               with the previous frame, the pipeline depth is 2. When the
   ///               pipeline depth changes from 1 to 2, animations and UI
   ///               interactions that cause the generation of the new layer tree
@@ -679,9 +715,10 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
 
   //----------------------------------------------------------------------------
   /// @brief      Notifies the engine that the embedder has expressed an opinion
-  ///             about where the accessibility tree should be generated or not.
-  ///             This call originates in the platform view and is forwarded to
-  ///             the engine here on the UI task runner by the shell.
+  ///             about whether the accessibility tree should be generated or
+  ///             not. This call originates in the platform view and is
+  ///             forwarded to the engine here on the UI task runner by the
+  ///             shell.
   ///
   /// @param[in]  enabled  Whether the accessibility tree is enabled or
   ///                      disabled.
@@ -705,7 +742,11 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   void SetAccessibilityFeatures(int32_t flags);
 
   // |RuntimeDelegate|
-  void ScheduleFrame(bool regenerate_layer_tree = true) override;
+  void ScheduleFrame(bool regenerate_layer_tree) override;
+
+  /// Schedule a frame with the default parameter of regenerating the layer
+  /// tree.
+  void ScheduleFrame() { ScheduleFrame(true); }
 
   // |RuntimeDelegate|
   FontCollection& GetFontCollection() override;
@@ -728,6 +769,12 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   ///             RunConfiguration when |Engine::Run| was called.
   ///
   const std::string& GetLastEntrypointLibrary() const;
+
+  //----------------------------------------------------------------------------
+  /// @brief      Getter for the initial route.  This can be set with a platform
+  ///             message.
+  ///
+  const std::string& InitialRoute() const { return initial_route_; }
 
  private:
   Engine::Delegate& delegate_;
@@ -768,6 +815,10 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   // |RuntimeDelegate|
   void UpdateIsolateDescription(const std::string isolate_name,
                                 int64_t isolate_port) override;
+
+  // |RuntimeDelegate|
+  std::unique_ptr<std::vector<std::string>> ComputePlatformResolvedLocale(
+      const std::vector<std::string>& supported_locale_data) override;
 
   void SetNeedsReportTimings(bool value) override;
 

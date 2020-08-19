@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.6
 import 'dart:math' as math;
 
+import 'package:test/bootstrap/browser.dart';
 import 'package:ui/src/engine.dart';
 import 'package:ui/ui.dart';
 
@@ -11,17 +13,24 @@ import 'scuba.dart';
 
 typedef PaintTest = void Function(RecordingCanvas recordingCanvas);
 
-void main() async {
+void main() {
+  internalBootstrapBrowserTest(() => testMain);
+}
+
+void testMain() async {
   // Scuba doesn't give us viewport smaller than 472px wide.
   final EngineScubaTester scuba = await EngineScubaTester.initialize(
     viewportSize: const Size(600, 600),
   );
 
+  setUpStableTestFonts();
+
   void paintTest(EngineCanvas canvas, PaintTest painter) {
-    final RecordingCanvas recordingCanvas =
-        RecordingCanvas(const Rect.fromLTWH(0, 0, 600, 600));
+    final Rect screenRect = const Rect.fromLTWH(0, 0, 600, 600);
+    final RecordingCanvas recordingCanvas = RecordingCanvas(screenRect);
     painter(recordingCanvas);
-    recordingCanvas.apply(canvas);
+    recordingCanvas.endRecording();
+    recordingCanvas.apply(canvas, screenRect);
   }
 
   testEachCanvas(
@@ -116,7 +125,7 @@ void drawQuickBrownFox(RecordingCanvas canvas) {
         textStyle: TextStyle(
           color: const Color(0xFF000000),
           decoration: TextDecoration.none,
-          fontFamily: 'Arial',
+          fontFamily: 'Roboto',
           fontSize: 30,
           background: Paint()..color = const Color.fromRGBO(50, 255, 50, 1.0),
         ),

@@ -72,11 +72,11 @@ void Thread::SetCurrentThreadName(const std::string& name) {
   if (name == "") {
     return;
   }
-#if OS_MACOSX
+#if defined(OS_MACOSX)
   pthread_setname_np(name.c_str());
-#elif OS_LINUX || OS_ANDROID
+#elif defined(OS_LINUX) || defined(OS_ANDROID)
   pthread_setname_np(pthread_self(), name.c_str());
-#elif OS_WIN
+#elif defined(OS_WIN)
   THREADNAME_INFO info;
   info.dwType = 0x1000;
   info.szName = name.c_str();
@@ -87,7 +87,7 @@ void Thread::SetCurrentThreadName(const std::string& name) {
                    reinterpret_cast<DWORD_PTR*>(&info));
   } __except (EXCEPTION_CONTINUE_EXECUTION) {
   }
-#elif OS_FUCHSIA
+#elif defined(OS_FUCHSIA)
   zx::thread::self()->set_property(ZX_PROP_NAME, name.c_str(), name.size());
 #else
   FML_DLOG(INFO) << "Could not set the thread name to '" << name

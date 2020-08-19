@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.6
 import 'package:test_api/src/backend/runtime.dart';
 
 import 'browser.dart';
@@ -44,6 +45,7 @@ class SupportedBrowsers {
     'edge': Runtime.internetExplorer,
     'firefox': Runtime.firefox,
     'safari': Runtime.safari,
+    'ios-safari': Runtime.safari,
   };
 
   final Map<String, String> supportedBrowserToPlatform = {
@@ -51,6 +53,7 @@ class SupportedBrowsers {
     'edge': 'ie',
     'firefox': 'firefox',
     'safari': 'safari',
+    'ios-safari': 'safari',
   };
 
   final Map<String, String> browserToConfiguration = {
@@ -61,6 +64,8 @@ class SupportedBrowsers {
     'firefox':
         '--configuration=${environment.webUiRootDir.path}/dart_test_firefox.yaml',
     'safari':
+        '--configuration=${environment.webUiRootDir.path}/dart_test_safari.yaml',
+    'ios-safari':
         '--configuration=${environment.webUiRootDir.path}/dart_test_safari.yaml',
   };
 

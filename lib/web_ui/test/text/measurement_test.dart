@@ -2,10 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.6
+@TestOn('chrome || firefox')
+
+import 'package:test/bootstrap/browser.dart';
+import 'package:test/test.dart';
+
 import 'package:ui/ui.dart' as ui;
 import 'package:ui/src/engine.dart';
 
-import 'package:test/test.dart';
 
 final ui.ParagraphStyle ahemStyle = ui.ParagraphStyle(
   fontFamily: 'ahem',
@@ -29,18 +34,26 @@ typedef MeasurementTestBody = void Function(TextMeasurementService instance);
 
 /// Runs the same test twice - once with dom measurement and once with canvas
 /// measurement.
-void testMeasurements(String description, MeasurementTestBody body) {
+void testMeasurements(String description, MeasurementTestBody body, {
+  bool skipDom,
+  bool skipCanvas,
+}) {
   test(
     '$description (dom)',
     () => body(TextMeasurementService.domInstance),
+    skip: skipDom,
   );
   test(
     '$description (canvas)',
     () => body(TextMeasurementService.canvasInstance),
+    skip: skipCanvas,
   );
 }
+void main() {
+  internalBootstrapBrowserTest(() => testMain);
+}
 
-void main() async {
+void testMain()  async {
   await ui.webOnlyInitializeTestDomRenderer();
 
   group('$RulerManager', () {
@@ -381,6 +394,7 @@ void main() async {
           expect(result.lines, isNull);
         }
       },
+      skipDom: browserEngine == BrowserEngine.webkit,
     );
 
     testMeasurements(
@@ -795,6 +809,7 @@ void main() async {
           expect(result.lines, isNull);
         }
       },
+      skipDom: browserEngine == BrowserEngine.webkit,
     );
 
     testMeasurements('respects max lines', (TextMeasurementService instance) {
@@ -1130,7 +1145,7 @@ void main() async {
 
 /// Shortcut to avoid many line wraps in the tests above.
 EngineLineMetrics line(
-  String text,
+  String displayText,
   int startIndex,
   int endIndex, {
   double width,
@@ -1139,12 +1154,14 @@ EngineLineMetrics line(
   double left,
 }) {
   return EngineLineMetrics.withText(
-    text,
+    displayText,
     startIndex: startIndex,
     endIndex: endIndex,
     hardBreak: hardBreak,
     width: width,
     lineNumber: lineNumber,
     left: left,
+    endIndexWithoutNewlines: -1,
+    widthWithTrailingSpaces: width,
   );
 }

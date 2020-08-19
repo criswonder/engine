@@ -9,6 +9,39 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// This file defines an Application Binary Interface (ABI), which requires more
+// stability than regular code to remain functional for exchanging messages
+// between different versions of the embedding and the engine, to allow for both
+// forward and backward compatibility.
+//
+// Specifically,
+// - The order, type, and size of the struct members below must remain the same,
+//   and members should not be removed.
+// - New structures that are part of the ABI must be defined with "size_t
+//   struct_size;" as their first member, which should be initialized using
+//   "sizeof(Type)".
+// - Enum values must not change or be removed.
+// - Enum members without explicit values must not be reordered.
+// - Function signatures (names, argument counts, argument order, and argument
+//   type) cannot change.
+// - The core behavior of existing functions cannot change.
+//
+// These changes are allowed:
+// - Adding new struct members at the end of a structure.
+// - Adding new enum members with a new value.
+// - Renaming a struct member as long as its type, size, and intent remain the
+//   same.
+// - Renaming an enum member as long as its value and intent remains the same.
+//
+// It is expected that struct members and implicitly-valued enums will not
+// always be declared in an order that is optimal for the reader, since members
+// will be added over time, and they can't be reordered.
+//
+// Existing functions should continue to appear from the caller's point of view
+// to operate as they did when they were first introduced, so introduce a new
+// function instead of modifying the core behavior of a function (and continue
+// to support the existing function with the previous behavior).
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -559,7 +592,7 @@ typedef struct {
   /// Has length `custom_accessibility_actions_count`.
   const int32_t* custom_accessibility_actions;
   /// Identifier of the platform view associated with this semantics node, or
-  /// zero if none.
+  /// -1 if none.
   FlutterPlatformViewIdentifier platform_view_id;
 } FlutterSemanticsNode;
 
@@ -861,6 +894,10 @@ typedef struct {
   const char* variant_code;
 } FlutterLocale;
 
+typedef const FlutterLocale* (*FlutterComputePlatformResolvedLocaleCallback)(
+    const FlutterLocale** /* supported_locales*/,
+    size_t /* Number of locales*/);
+
 typedef int64_t FlutterEngineDartPort;
 
 typedef enum {
@@ -933,6 +970,82 @@ typedef struct {
     const FlutterEngineDartBuffer* buffer_value;
   };
 } FlutterEngineDartObject;
+
+/// This enum allows embedders to determine the type of the engine thread in the
+/// FlutterNativeThreadCallback. Based on the thread type, the embedder may be
+/// able to tweak the thread priorities for optimum performance.
+typedef enum {
+  /// The Flutter Engine considers the thread on which the FlutterEngineRun call
+  /// is made to be the platform thread. There is only one such thread per
+  /// engine instance.
+  kFlutterNativeThreadTypePlatform,
+  /// This is the thread the Flutter Engine uses to execute rendering commands
+  /// based on the selected client rendering API. There is only one such thread
+  /// per engine instance.
+  kFlutterNativeThreadTypeRender,
+  /// This is a dedicated thread on which the root Dart isolate is serviced.
+  /// There is only one such thread per engine instance.
+  kFlutterNativeThreadTypeUI,
+  /// Multiple threads are used by the Flutter engine to perform long running
+  /// background tasks.
+  kFlutterNativeThreadTypeWorker,
+} FlutterNativeThreadType;
+
+/// A callback made by the engine in response to
+/// `FlutterEnginePostCallbackOnAllNativeThreads` on all internal thread.
+typedef void (*FlutterNativeThreadCallback)(FlutterNativeThreadType type,
+                                            void* user_data);
+
+/// AOT data source type.
+typedef enum {
+  kFlutterEngineAOTDataSourceTypeElfPath
+} FlutterEngineAOTDataSourceType;
+
+/// This struct specifies one of the various locations the engine can look for
+/// AOT data sources.
+typedef struct {
+  FlutterEngineAOTDataSourceType type;
+  union {
+    /// Absolute path to an ELF library file.
+    const char* elf_path;
+  };
+} FlutterEngineAOTDataSource;
+
+/// An opaque object that describes the AOT data that can be used to launch a
+/// FlutterEngine instance in AOT mode.
+typedef struct _FlutterEngineAOTData* FlutterEngineAOTData;
+
+//------------------------------------------------------------------------------
+/// @brief      Creates the necessary data structures to launch a Flutter Dart
+///             application in AOT mode. The data may only be collected after
+///             all FlutterEngine instances launched using this data have been
+///             terminated.
+///
+/// @param[in]  source    The source of the AOT data.
+/// @param[out] data_out  The AOT data on success. Unchanged on failure.
+///
+/// @return     Returns if the AOT data could be successfully resolved.
+///
+FLUTTER_EXPORT
+FlutterEngineResult FlutterEngineCreateAOTData(
+    const FlutterEngineAOTDataSource* source,
+    FlutterEngineAOTData* data_out);
+
+//------------------------------------------------------------------------------
+/// @brief      Collects the AOT data.
+///
+/// @warning    The embedder must ensure that this call is made only after all
+///             FlutterEngine instances launched using this data have been
+///             terminated, and that all of those instances were launched with
+///             the FlutterProjectArgs::shutdown_dart_vm_when_done flag set to
+///             true.
+///
+/// @param[in]  data   The data to collect.
+///
+/// @return     Returns if the AOT data was successfully collected.
+///
+FLUTTER_EXPORT
+FlutterEngineResult FlutterEngineCollectAOTData(FlutterEngineAOTData data);
 
 typedef struct {
   /// The size of this struct. Must be sizeof(FlutterProjectArgs).
@@ -1121,11 +1234,30 @@ typedef struct {
   /// See also:
   /// https://github.com/dart-lang/sdk/blob/ca64509108b3e7219c50d6c52877c85ab6a35ff2/runtime/vm/flag_list.h#L150
   int64_t dart_old_gen_heap_size;
+
+  /// The AOT data to be used in AOT operation.
+  ///
+  /// Embedders should instantiate and destroy this object via the
+  /// FlutterEngineCreateAOTData and FlutterEngineCollectAOTData methods.
+  ///
+  /// Embedders can provide either snapshot buffers or aot_data, but not both.
+  FlutterEngineAOTData aot_data;
+
+  /// A callback that computes the locale the platform would natively resolve
+  /// to.
+  ///
+  /// The input parameter is an array of FlutterLocales which represent the
+  /// locales supported by the app. One of the input supported locales should
+  /// be selected and returned to best match with the user/device's preferred
+  /// locale. The implementation should produce a result that as closely
+  /// matches what the platform would natively resolve to as possible.
+  FlutterComputePlatformResolvedLocaleCallback
+      compute_platform_resolved_locale_callback;
 } FlutterProjectArgs;
 
 //------------------------------------------------------------------------------
 /// @brief      Initialize and run a Flutter engine instance and return a handle
-///             to it. This is a convenience method for the the pair of calls to
+///             to it. This is a convenience method for the pair of calls to
 ///             `FlutterEngineInitialize` and `FlutterEngineRunInitialized`.
 ///
 /// @note       This method of running a Flutter engine works well except in
@@ -1666,6 +1798,45 @@ FlutterEngineResult FlutterEnginePostDartObject(
 FLUTTER_EXPORT
 FlutterEngineResult FlutterEngineNotifyLowMemoryWarning(
     FLUTTER_API_SYMBOL(FlutterEngine) engine);
+
+//------------------------------------------------------------------------------
+/// @brief      Schedule a callback to be run on all engine managed threads.
+///             The engine will attempt to service this callback the next time
+///             the message loop for each managed thread is idle. Since the
+///             engine manages the entire lifecycle of multiple threads, there
+///             is no opportunity for the embedders to finely tune the
+///             priorities of threads directly, or, perform other thread
+///             specific configuration (for example, setting thread names for
+///             tracing). This callback gives embedders a chance to affect such
+///             tuning.
+///
+/// @attention  This call is expensive and must be made as few times as
+///             possible. The callback must also return immediately as not doing
+///             so may risk performance issues (especially for callbacks of type
+///             kFlutterNativeThreadTypeUI and kFlutterNativeThreadTypeRender).
+///
+/// @attention  Some callbacks (especially the ones of type
+///             kFlutterNativeThreadTypeWorker) may be called after the
+///             FlutterEngine instance has shut down. Embedders must be careful
+///             in handling the lifecycle of objects associated with the user
+///             data baton.
+///
+/// @attention  In case there are multiple running Flutter engine instances,
+///             their workers are shared.
+///
+/// @param[in]  engine     A running engine instance.
+/// @param[in]  callback   The callback that will get called multiple times on
+///                        each engine managed thread.
+/// @param[in]  user_data  A baton passed by the engine to the callback. This
+///                        baton is not interpreted by the engine in any way.
+///
+/// @return     Returns if the callback was successfully posted to all threads.
+///
+FLUTTER_EXPORT
+FlutterEngineResult FlutterEnginePostCallbackOnAllNativeThreads(
+    FLUTTER_API_SYMBOL(FlutterEngine) engine,
+    FlutterNativeThreadCallback callback,
+    void* user_data);
 
 #if defined(__cplusplus)
 }  // extern "C"
